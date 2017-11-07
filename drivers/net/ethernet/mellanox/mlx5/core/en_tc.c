@@ -74,6 +74,7 @@ struct mlx5e_tc_flow {
 	struct list_head	encap;   /* flows sharing the same encap ID */
 	struct list_head	mod_hdr; /* flows sharing the same mod hdr ID */
 	struct list_head	hairpin; /* flows sharing the same hairpin */
+	struct mlx5e_encap_entry *peer_e;
 	union {
 		struct mlx5_esw_flow_attr esw_attr[0];
 		struct mlx5_nic_flow_attr nic_attr[0];
@@ -583,6 +584,29 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 				goto err_add_rule;
 			}
 		}
+
+		if (mlx5_lag_is_multipath(priv->mdev) &&
+		    (attr->action & MLX5_FLOW_CONTEXT_ACTION_ENCAP)) {
+			struct mlx5_core_dev *peer_dev =
+				mlx5_lag_get_peer_mdev(priv->mdev);
+			struct mlx5_esw_flow_attr peer_attr;
+
+			peer_attr = *attr;
+			peer_attr.encap_id = attr->peer_encap_id;
+
+			flow->rule[1] = mlx5_eswitch_add_offloaded_rule(
+						peer_dev->priv.eswitch,
+						&parse_attr->spec[0],
+						&peer_attr);
+			if (IS_ERR(flow->rule[1])) {
+				mlx5_eswitch_del_offloaded_rule(
+					peer_dev->priv.eswitch,
+					flow->rule[0],
+					attr);
+				err = PTR_ERR(flow->rule[1]);
+				goto err_add_rule;
+			}
+		}
 	}
 
 	return PTR_ERR(rule);
@@ -744,6 +768,18 @@ void mlx5e_tc_update_neigh_used_value(struct mlx5e_neigh_hash_entry *nhe)
 	}
 }
 
+static void __detach_encap(struct mlx5e_priv *priv,
+			   struct mlx5e_encap_entry *e)
+{
+	mlx5e_rep_encap_entry_detach(netdev_priv(priv->netdev), e);
+
+	if (e->flags & MLX5_ENCAP_ENTRY_VALID)
+		mlx5_encap_dealloc(priv->mdev, e->encap_id);
+
+	kfree(e->encap_header);
+	kfree(e);
+}
+
 static void mlx5e_detach_encap(struct mlx5e_priv *priv,
 			       struct mlx5e_tc_flow *flow)
 {
@@ -762,6 +798,16 @@ static void mlx5e_detach_encap(struct mlx5e_priv *priv,
 		hash_del_rcu(&e->encap_hlist);
 		kfree(e->encap_header);
 		kfree(e);
+
+		if (flow->peer_e) {
+			struct mlx5e_encap_entry *peer_e = flow->peer_e;
+			struct net_device *peer_netdev =
+				mlx5_lag_get_peer_netdev(priv->mdev);
+			struct mlx5e_priv *peer_priv =
+				netdev_priv(peer_netdev);
+
+			__detach_encap(peer_priv, peer_e);
+		}
 	}
 }
 
@@ -2078,6 +2124,41 @@ out:
 	return err;
 }
 
+static int
+__attach_encap(struct mlx5e_priv *priv,
+	       struct ip_tunnel_info *tun_info,
+	       int tunnel_type,
+	       struct net_device *mirred_dev,
+	       struct mlx5e_encap_entry **encap)
+{
+	unsigned short family = ip_tunnel_info_af(tun_info);
+	struct mlx5e_encap_entry *e;
+	int err = 0;
+
+	e = kzalloc(sizeof(*e), GFP_KERNEL);
+	if (!e)
+		return -ENOMEM;
+
+	e->tun_info = *tun_info;
+	e->tunnel_type = tunnel_type;
+	INIT_LIST_HEAD(&e->flows);
+
+	if (family == AF_INET)
+		err = mlx5e_create_encap_header_ipv4(priv, mirred_dev, e);
+	else if (family == AF_INET6)
+		err = mlx5e_create_encap_header_ipv6(priv, mirred_dev, e);
+
+	if (err && err != -EAGAIN)
+		goto out_err;
+
+	*encap = e;
+	return err;
+
+out_err:
+	kfree(e);
+	return err;
+}
+
 static int mlx5e_attach_encap(struct mlx5e_priv *priv,
 			      struct ip_tunnel_info *tun_info,
 			      struct net_device *mirred_dev,
@@ -2086,7 +2167,6 @@ static int mlx5e_attach_encap(struct mlx5e_priv *priv,
 {
 	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
 	struct net_device *up_dev = mlx5_eswitch_get_uplink_netdev(esw);
-	unsigned short family = ip_tunnel_info_af(tun_info);
 	struct mlx5e_priv *up_priv = netdev_priv(up_dev);
 	struct mlx5_esw_flow_attr *attr = flow->esw_attr;
 	struct ip_tunnel_key *key = &tun_info->key;
@@ -2129,21 +2209,32 @@ vxlan_encap_offload_err:
 	if (found)
 		goto attach_flow;
 
-	e = kzalloc(sizeof(*e), GFP_KERNEL);
-	if (!e)
-		return -ENOMEM;
-
-	e->tun_info = *tun_info;
-	e->tunnel_type = tunnel_type;
-	INIT_LIST_HEAD(&e->flows);
-
-	if (family == AF_INET)
-		err = mlx5e_create_encap_header_ipv4(priv, mirred_dev, e);
-	else if (family == AF_INET6)
-		err = mlx5e_create_encap_header_ipv6(priv, mirred_dev, e);
-
+	err = __attach_encap(priv, tun_info, tunnel_type, mirred_dev, &e);
 	if (err && err != -EAGAIN)
 		goto out_err;
+
+	pr_err("%s: Attach encap1 err %d e %p\n", __func__, err, e);
+
+	if (mlx5_lag_is_multipath(priv->mdev)) {
+		struct mlx5e_encap_entry *e2;
+		struct net_device *peer_netdev =
+			mlx5_lag_get_peer_netdev(priv->mdev);
+		int err2;
+
+		err2 = __attach_encap(netdev_priv(peer_netdev), tun_info,
+				    tunnel_type, mirred_dev, &e2);
+		pr_err("%s: Attach encap2 err %d e2 %p\n", __func__, err2, e2);
+		if (err2 && err2 != -EAGAIN) {
+			if (!err || err == -EAGAIN)
+				__detach_encap(priv, e);
+			goto out_err;
+		}
+
+		if (e2->flags & MLX5_ENCAP_ENTRY_VALID)
+			attr->peer_encap_id = e2->encap_id;
+
+		flow->peer_e = e2;
+	}
 
 	hash_add_rcu(esw->offloads.encap_tbl, &e->encap_hlist, hash_key);
 
@@ -2154,11 +2245,7 @@ attach_flow:
 		attr->encap_id = e->encap_id;
 	else
 		err = -EAGAIN;
-
-	return err;
-
 out_err:
-	kfree(e);
 	return err;
 }
 
