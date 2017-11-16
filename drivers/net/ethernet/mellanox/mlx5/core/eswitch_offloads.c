@@ -467,6 +467,8 @@ static int esw_create_offloads_fast_fdb_table(struct mlx5_eswitch *esw)
 	esw_size = min_t(int, max_flow_counter * ESW_OFFLOADS_NUM_GROUPS,
 			 1 << MLX5_CAP_ESW_FLOWTABLE_FDB(dev, log_max_ft_size));
 
+	pr_err("%s: esw_size:%d \n", __func__, esw_size);
+
 	if (esw->offloads.encap != DEVLINK_ESWITCH_ENCAP_MODE_NONE)
 		flags |= MLX5_FLOW_TABLE_TUNNEL_EN;
 
@@ -716,7 +718,7 @@ static void esw_destroy_offloads_fdb_tables(struct mlx5_eswitch *esw)
 	mlx5_del_flow_rules(esw->fdb_table.offloads.miss_rule);
 	mlx5_destroy_flow_group(esw->fdb_table.offloads.send_to_vport_grp);
 	mlx5_destroy_flow_group(esw->fdb_table.offloads.miss_grp);
-
+	pr_err("%s: destroy fdb table\n", __func__);
 	mlx5_destroy_flow_table(esw->fdb_table.offloads.fdb);
 	esw_destroy_offloads_fast_fdb_table(esw);
 }

@@ -561,7 +561,10 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 	 * (2) there's an encap action and we're on -EAGAIN (no valid neigh)
 	 */
 	if (rule != ERR_PTR(-EAGAIN)) {
+		pr_err("%s: esw %p netdev %s flow %p add rule 0\n", __func__, esw,
+			priv->netdev->name, flow);
 		flow->rule[0] = mlx5_eswitch_add_offloaded_rule(esw, &parse_attr->spec[0], attr);
+		pr_err("%s: done\n", __func__);
 		if (IS_ERR(flow->rule[0])) {
 			err = PTR_ERR(flow->rule[0]);
 			goto err_add_rule;
@@ -572,9 +575,12 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 			struct mlx5_core_dev *peer_dev =
 				mlx5_lag_get_peer_mdev(priv->mdev);
 
+			pr_err("%s: esw %p netdev %s flow %p add rule 1\n", __func__, esw,
+				priv->netdev->name, flow);
 			flow->rule[1] = mlx5_eswitch_add_offloaded_rule(
 						peer_dev->priv.eswitch,
 						&parse_attr->spec[1], attr);
+			pr_err("%s: done\n", __func__);
 			if (IS_ERR(flow->rule[1])) {
 				mlx5_eswitch_del_offloaded_rule(
 					peer_dev->priv.eswitch,
@@ -594,10 +600,13 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 			peer_attr = *attr;
 			peer_attr.encap_id = attr->peer_encap_id;
 
+			pr_err("%s: esw %p netdev %s flow %p add rule 1\n", __func__, esw,
+				priv->netdev->name, flow);
 			flow->rule[1] = mlx5_eswitch_add_offloaded_rule(
 						peer_dev->priv.eswitch,
 						&parse_attr->spec[0],
 						&peer_attr);
+			pr_err("%s: done\n", __func__);
 			if (IS_ERR(flow->rule[1])) {
 				mlx5_eswitch_del_offloaded_rule(
 					peer_dev->priv.eswitch,
@@ -629,18 +638,27 @@ static void mlx5e_tc_del_fdb_flow(struct mlx5e_priv *priv,
 	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
 	struct mlx5_esw_flow_attr *attr = flow->esw_attr;
 
+	pr_err("%s: esw %p netdev %s flow %p request del rule\n", __func__, esw,
+				priv->netdev->name, flow);
 	if (flow->flags & MLX5E_TC_FLOW_OFFLOADED) {
 		flow->flags &= ~MLX5E_TC_FLOW_OFFLOADED;
+		pr_err("%s: esw %p netdev %s flow %p del rule 0\n", __func__, esw,
+				priv->netdev->name, flow);
 		mlx5_eswitch_del_offloaded_rule(esw, flow->rule[0], attr);
+		pr_err("%s: done\n", __func__);
 
 		if (flow->rule[1]) {
 			struct mlx5_core_dev *peer_dev =
 				mlx5_lag_get_peer_mdev(priv->mdev);
 
+			pr_err("%s: esw %p netdev %s flow %p del rule 1\n", __func__, esw,
+				priv->netdev->name, flow);
 			mlx5_eswitch_del_offloaded_rule(
 				peer_dev->priv.eswitch, flow->rule[1], attr);
+			pr_err("%s: done\n", __func__);
 		}
 	}
+	pr_err("%s: done request\n", __func__);
 
 	mlx5_eswitch_del_vlan_action(esw, attr);
 
@@ -675,7 +693,10 @@ void mlx5e_tc_encap_flows_add(struct mlx5e_priv *priv,
 	list_for_each_entry(flow, &e->flows, encap) {
 		esw_attr = flow->esw_attr;
 		esw_attr->encap_id = e->encap_id;
+		pr_err("%s: esw %p netdev %s flow %p add rule 0\n", __func__, esw,
+			priv->netdev->name, flow);
 		flow->rule[0] = mlx5_eswitch_add_offloaded_rule(esw, &esw_attr->parse_attr->spec[0], esw_attr);
+		pr_err("%s: done\n", __func__);
 		if (IS_ERR(flow->rule[0])) {
 			err = PTR_ERR(flow->rule[0]);
 			mlx5_core_warn(priv->mdev, "Failed to update cached encapsulation flow, %d\n",
@@ -695,7 +716,10 @@ void mlx5e_tc_encap_flows_del(struct mlx5e_priv *priv,
 	list_for_each_entry(flow, &e->flows, encap) {
 		if (flow->flags & MLX5E_TC_FLOW_OFFLOADED) {
 			flow->flags &= ~MLX5E_TC_FLOW_OFFLOADED;
+			pr_err("%s: esw %p netdev %s flow %p del rule 0\n", __func__, esw,
+				priv->netdev->name, flow);
 			mlx5_eswitch_del_offloaded_rule(esw, flow->rule[0], flow->esw_attr);
+			pr_err("%s: done\n", __func__);
 		}
 	}
 
