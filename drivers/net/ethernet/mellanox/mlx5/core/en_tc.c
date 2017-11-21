@@ -62,8 +62,10 @@ struct mlx5_nic_flow_attr {
 enum {
 	MLX5E_TC_FLOW_ESWITCH	= BIT(0),
 	MLX5E_TC_FLOW_NIC	= BIT(1),
-	MLX5E_TC_FLOW_OFFLOADED	= BIT(2),
+//	MLX5E_TC_FLOW_OFFLOADED	= BIT(2),
 	MLX5E_TC_FLOW_HAIRPIN	= BIT(3),
+	MLX5E_TC_FLOW_RULE0 = BIT(4),
+	MLX5E_TC_FLOW_RULE1 = BIT(5),
 };
 
 struct mlx5e_tc_flow {
@@ -469,6 +471,7 @@ int mlx5e_tc_add_nic_flow(struct mlx5e_priv *priv,
 		goto err_add_rule;
 	}
 
+	flow->flags |= MLX5E_TC_FLOW_RULE0;
 	return 0;
 
 err_add_rule:
@@ -589,6 +592,7 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 				err = PTR_ERR(flow->rule[1]);
 				goto err_add_rule;
 			}
+			flow->flags |= MLX5E_TC_FLOW_RULE1;
 		}
 
 		if (mlx5_lag_is_multipath(priv->mdev) &&
@@ -615,7 +619,10 @@ mlx5e_tc_add_fdb_flow(struct mlx5e_priv *priv,
 				err = PTR_ERR(flow->rule[1]);
 				goto err_add_rule;
 			}
+			flow->flags |= MLX5E_TC_FLOW_RULE1;
 		}
+
+		flow->flags |= MLX5E_TC_FLOW_RULE0;
 	}
 
 	return PTR_ERR(rule);
@@ -640,23 +647,26 @@ static void mlx5e_tc_del_fdb_flow(struct mlx5e_priv *priv,
 
 	pr_err("%s: esw %p netdev %s flow %p request del rule\n", __func__, esw,
 				priv->netdev->name, flow);
-	if (flow->flags & MLX5E_TC_FLOW_OFFLOADED) {
-		flow->flags &= ~MLX5E_TC_FLOW_OFFLOADED;
-		pr_err("%s: esw %p netdev %s flow %p del rule 0\n", __func__, esw,
-				priv->netdev->name, flow);
+	if (flow->flags & MLX5E_TC_FLOW_RULE0) {
+		flow->flags &= ~MLX5E_TC_FLOW_RULE0;
+		pr_err("%s: esw %p netdev %s flow %p del rule 0\n",
+			__func__, esw, priv->netdev->name, flow);
 		mlx5_eswitch_del_offloaded_rule(esw, flow->rule[0], attr);
 		pr_err("%s: done\n", __func__);
+		flow->rule[0] = NULL;
+	}
 
-		if (flow->rule[1]) {
-			struct mlx5_core_dev *peer_dev =
-				mlx5_lag_get_peer_mdev(priv->mdev);
+	if (flow->flags & MLX5E_TC_FLOW_RULE1) {
+		struct mlx5_core_dev *peer_dev =
+			mlx5_lag_get_peer_mdev(priv->mdev);
 
-			pr_err("%s: esw %p netdev %s flow %p del rule 1\n", __func__, esw,
-				priv->netdev->name, flow);
-			mlx5_eswitch_del_offloaded_rule(
-				peer_dev->priv.eswitch, flow->rule[1], attr);
-			pr_err("%s: done\n", __func__);
-		}
+		flow->flags &= ~MLX5E_TC_FLOW_RULE1;
+		pr_err("%s: esw %p netdev %s flow %p del rule 1\n", __func__, esw,
+			priv->netdev->name, flow);
+		mlx5_eswitch_del_offloaded_rule(
+			peer_dev->priv.eswitch, flow->rule[1], attr);
+		pr_err("%s: done\n", __func__);
+		flow->rule[1] = NULL;
 	}
 	pr_err("%s: done request\n", __func__);
 
@@ -703,7 +713,7 @@ void mlx5e_tc_encap_flows_add(struct mlx5e_priv *priv,
 				       err);
 			continue;
 		}
-		flow->flags |= MLX5E_TC_FLOW_OFFLOADED;
+		flow->flags |= MLX5E_TC_FLOW_RULE0;
 	}
 }
 
@@ -714,8 +724,8 @@ void mlx5e_tc_encap_flows_del(struct mlx5e_priv *priv,
 	struct mlx5e_tc_flow *flow;
 
 	list_for_each_entry(flow, &e->flows, encap) {
-		if (flow->flags & MLX5E_TC_FLOW_OFFLOADED) {
-			flow->flags &= ~MLX5E_TC_FLOW_OFFLOADED;
+		if (flow->flags & MLX5E_TC_FLOW_RULE0) {
+			flow->flags &= ~MLX5E_TC_FLOW_RULE0;
 			pr_err("%s: esw %p netdev %s flow %p del rule 0\n", __func__, esw,
 				priv->netdev->name, flow);
 			mlx5_eswitch_del_offloaded_rule(esw, flow->rule[0], flow->esw_attr);
@@ -753,22 +763,22 @@ void mlx5e_tc_update_neigh_used_value(struct mlx5e_neigh_hash_entry *nhe)
 		if (!(e->flags & MLX5_ENCAP_ENTRY_VALID))
 			continue;
 		list_for_each_entry(flow, &e->flows, encap) {
-			if (flow->flags & MLX5E_TC_FLOW_OFFLOADED) {
+			if (flow->flags & MLX5E_TC_FLOW_RULE0) {
 				counter = mlx5_flow_rule_counter(flow->rule[0]);
 				mlx5_fc_query_cached(counter, &bytes, &packets, &lastuse);
+			}
 
-				if (flow->rule[1]) {
-					u64 lastuse2;
+			if (flow->flags & MLX5E_TC_FLOW_RULE1) {
+				u64 lastuse2;
 
-					counter = mlx5_flow_rule_counter(flow->rule[1]);
-					mlx5_fc_query_cached(counter, &bytes, &packets, &lastuse2);
-					lastuse = max_t(u64, lastuse, lastuse2);
-				}
+				counter = mlx5_flow_rule_counter(flow->rule[1]);
+				mlx5_fc_query_cached(counter, &bytes, &packets, &lastuse2);
+				lastuse = max_t(u64, lastuse, lastuse2);
+			}
 
-				if (time_after((unsigned long)lastuse, nhe->reported_lastuse)) {
-					neigh_used = true;
-					break;
-				}
+			if (lastuse > 0 && time_after((unsigned long)lastuse, nhe->reported_lastuse)) {
+				neigh_used = true;
+				break;
 			}
 		}
 		if (neigh_used)
@@ -2443,9 +2453,7 @@ int mlx5e_configure_flower(struct mlx5e_priv *priv, __be16 protocol,
 	if (err && err != -EAGAIN)
 		goto err_free;
 
-	if (err != -EAGAIN)
-		flow->flags |= MLX5E_TC_FLOW_OFFLOADED;
-
+	pr_err("%s: add flow %p to ht\n", __func__, flow);
 	err = rhashtable_insert_fast(&tc->ht, &flow->node,
 				     tc->ht_params);
 	if (err)
@@ -2498,16 +2506,13 @@ int mlx5e_stats_flower(struct mlx5e_priv *priv,
 	if (!flow)
 		return -EINVAL;
 
-	if (!(flow->flags & MLX5E_TC_FLOW_OFFLOADED))
-		return 0;
+	if (flow->flags & MLX5E_TC_FLOW_RULE0) {
+		counter = mlx5_flow_rule_counter(flow->rule[0]);
+		if (counter)
+			mlx5_fc_query_cached(counter, &bytes, &packets, &lastuse);
+	}
 
-	counter = mlx5_flow_rule_counter(flow->rule[0]);
-	if (!counter)
-		return 0;
-
-	mlx5_fc_query_cached(counter, &bytes, &packets, &lastuse);
-
-	if (flow->rule[1]) {
+	if (flow->flags & MLX5E_TC_FLOW_RULE1) {
 		u64 bytes2, packets2, lastuse2;
 
 		counter = mlx5_flow_rule_counter(flow->rule[1]);
