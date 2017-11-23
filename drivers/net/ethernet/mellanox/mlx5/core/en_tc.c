@@ -2258,16 +2258,11 @@ vxlan_encap_offload_err:
 		err2 = __attach_encap(netdev_priv(peer_netdev), tun_info,
 				    tunnel_type, mirred_dev, &e2);
 		pr_err("%s: Attach encap2 err %d e2 %p\n", __func__, err2, e2);
-		if (err2 && err2 != -EAGAIN) {
-			if (!err || err == -EAGAIN)
-				__detach_encap(priv, e);
-			goto out_err;
+		if (!err2) {
+			if (e2->flags & MLX5_ENCAP_ENTRY_VALID)
+				attr->peer_encap_id = e2->encap_id;
+			flow->peer_e = e2;
 		}
-
-		if (e2->flags & MLX5_ENCAP_ENTRY_VALID)
-			attr->peer_encap_id = e2->encap_id;
-
-		flow->peer_e = e2;
 	}
 
 	hash_add_rcu(esw->offloads.encap_tbl, &e->encap_hlist, hash_key);
