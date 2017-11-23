@@ -1957,7 +1957,7 @@ static int mlx5e_create_encap_header_ipv4(struct mlx5e_priv *priv,
 	struct neighbour *n = NULL;
 	struct flowi4 fl4 = {};
 	char *encap_header;
-	int ttl, err;
+	int ttl = 0, err;
 	u8 nud_state;
 
 	if (max_encap_size < ipv4_encap_size) {
