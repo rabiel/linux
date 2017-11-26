@@ -640,6 +640,7 @@ void mlx5e_tc_encap_flows_add(struct mlx5e_priv *priv,
 			continue;
 		}
 		flow->flags |= MLX5E_TC_FLOW_OFFLOADED;
+		pr_err("%s: e %p added flow %p\n", __func__, e, flow);
 	}
 }
 
@@ -747,6 +748,7 @@ static void mlx5e_tc_del_flow(struct mlx5e_priv *priv,
 			      struct mlx5e_tc_flow *flow)
 {
 	if (flow->flags & MLX5E_TC_FLOW_ESWITCH) {
+		pr_err("%s: delete flow %p peer flow %p\n", __func__, flow, flow->peer_flow);
 		if (flow->peer_flow) {
 			mlx5e_tc_del_fdb_flow(flow->peer_flow->priv, flow->peer_flow);
 			kvfree(flow->peer_flow);
@@ -2383,12 +2385,15 @@ err_free2:
 	    !(flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_ENCAP))
 		kvfree(parse_attr);
 
+	pr_err("%s: flow %p peer_flow %p ht %p\n", __func__, flow, flow->peer_flow, &tc->ht);
+
 	return err;
 
 err_del_rule:
 	mlx5e_tc_del_flow(priv, flow);
 
 err_free:
+	pr_err("%s: err_free flow %p peer_flow %p\n", __func__, flow, flow->peer_flow);
 	kvfree(parse_attr);
 	kfree(flow);
 	return err;
@@ -2881,6 +2886,21 @@ void mlx5_hairpin_unset(struct mlx5_hairpin_ctx *func_ctx,
 	mlx5_hairpin_free(func_ctx);
 }
 
+#define BOOLSTR(a) (a ? #a : "not " #a)
+
+static void print_flow(struct mlx5e_tc_flow *flow) {
+	bool valid = flow->flags & MLX5E_TC_FLOW_VALID;
+	bool offloaded = flow->flags & MLX5E_TC_FLOW_OFFLOADED;
+	bool decap = (flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_DECAP);
+	bool encap = (flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_ENCAP);
+
+	pr_err("flow %p %s %s %s\n", flow,
+		encap ? "encap" : (decap ? "decap" : "na"),
+		BOOLSTR(valid),
+		BOOLSTR(offloaded)
+		);
+}
+
 void mlx5e_restore_rules(struct net_device *ndev) {
 	struct mlx5e_priv *priv = netdev_priv(ndev);
 	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
@@ -2896,12 +2916,16 @@ void mlx5e_restore_rules(struct net_device *ndev) {
 		priv = netdev_priv(rep->netdev);
 		tc = &priv->fs.tc;
 
+		pr_err("%s: vport %d rep %p ht %p netdev %p priv %p tc %p valid %d\n",
+			__func__, vport, rep, &tc->ht, rep->netdev, priv, tc, rep->valid);
+
 		if (!rep->netdev)
 			continue;
 
 		rhashtable_walk_enter(&tc->ht, &iter);
 		err = rhashtable_walk_start(&iter);
 		if (err) {
+			pr_err("walk start failed %d\n", err);
 			rhashtable_walk_stop(&iter);
 			rhashtable_walk_exit(&iter);
 			continue;
@@ -2919,6 +2943,12 @@ void mlx5e_restore_rules(struct net_device *ndev) {
 
 			if (!(flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_ENCAP))
 				continue;
+
+			print_flow(flow);
+			if (flow->peer_flow) {
+				pr_err("peer flow\n");
+				print_flow(flow->peer_flow);
+			}
 
 			if (!(flow->flags & MLX5E_TC_FLOW_VALID)) {
 				err = mlx5e_tc_add_fdb_flow(priv,
