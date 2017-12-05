@@ -69,11 +69,6 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 		if (mlx5_lag_is_multipath(esw->dev)) {
 			struct mlx5e_priv* priv = netdev_priv(attr->in_rep->netdev);
 
-			pr_err("%s: dst_esw netdev %s mdev %s action %x\n", __func__,
-				attr->in_rep->netdev->name,
-				priv->mdev->priv.name,
-				flow_act.action);
-
 			dest[i].destination_eswitch_owner_vhca_id = MLX5_CAP_GEN(priv->mdev, vhca_id);
 			dest[i].destination_eswitch_owner_vhca_id_valid = 1;
 		}
@@ -101,11 +96,6 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 
 		if (flow_act.action & MLX5_FLOW_CONTEXT_ACTION_ENCAP)
 			priv = netdev_priv(attr->in_rep->netdev);
-
-		pr_err("%s: src_esw netdev %s mdev %s action %x\n", __func__,
-			priv->netdev->name,
-			priv->mdev->priv.name,
-			flow_act.action);
 
 		MLX5_SET(fte_match_set_misc, misc,
 			 source_eswitch_owner_vhca_id,
