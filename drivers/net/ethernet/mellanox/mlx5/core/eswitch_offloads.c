@@ -978,7 +978,7 @@ void esw_offloads_cleanup(struct mlx5_eswitch *esw, int nvports)
 		rep->unload(esw, rep);
 	}
 
-	if (mlx5_lag_is_multipath(esw->dev)) {
+	if (esw->fdb_table.offloads.peer_miss_rules) {
 		// TODO need to clean peer miss grp as well if peer is still
 		// switchdev
 		esw_del_peer_miss_rules(esw, nvports);
