@@ -674,6 +674,7 @@ static void esw_del_peer_miss_rules(struct mlx5_eswitch *esw, int nvports)
 		if (flows[i])
 			mlx5_del_flow_rules(flows[i]);
 	kvfree(flows);
+	esw->fdb_table.offloads.peer_miss_rules = NULL;
 }
 
 static void esw_add_peer_miss_rules(struct mlx5_eswitch *esw, int nvports)
