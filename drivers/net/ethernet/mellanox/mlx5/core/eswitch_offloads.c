@@ -918,6 +918,7 @@ int esw_offloads_init(struct mlx5_eswitch *esw, int nvports)
 		esw_add_peer_miss_rules(esw, peer_nvports);
 		esw_add_peer_miss_rules(peer_esw, nvports);
 		// TODO check error
+		mlx5_lag_set_multipath_ready(esw->dev);
 	}
 
 	return 0;
@@ -971,6 +972,8 @@ void esw_offloads_cleanup(struct mlx5_eswitch *esw, int nvports)
 {
 	struct mlx5_eswitch_rep *rep;
 	int vport;
+
+	mlx5_lag_unset_multipath_ready(esw->dev);
 
 	for (vport = nvports - 1; vport >= 0; vport--) {
 		rep = &esw->offloads.vport_reps[vport];
