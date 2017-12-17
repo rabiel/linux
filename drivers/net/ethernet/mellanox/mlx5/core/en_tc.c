@@ -2304,7 +2304,7 @@ int mlx5e_configure_flower(struct mlx5e_priv *priv, __be16 protocol,
 		err = mlx5e_tc_add_nic_flow(priv, parse_attr, flow);
 	}
 
-	if (mlx5_lag_is_multipath(esw->dev) &&
+	if (mlx5_lag_is_multipath_ready(esw->dev) &&
 	    (flow->flags & MLX5E_TC_FLOW_ESWITCH) &&
 	    ((flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_DECAP) ||
 	     (flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_ENCAP)))
