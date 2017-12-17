@@ -271,7 +271,7 @@ static void mlx5_do_bond(struct mlx5_lag *ldev)
 
 		mlx5_add_dev_by_protocol(dev0, MLX5_INTERFACE_PROTOCOL_IB);
 		mlx5_nic_vport_enable_roce(dev1);
-	} else if ((do_bond && mlx5_lag_is_bonded(ldev)) || mlx5_lag_is_multipath(dev0)) {
+	} else if ((do_bond && mlx5_lag_is_bonded(ldev)) || mlx5_lag_is_multipath_ready(dev0)) {
 		mlx5_modify_lag(ldev, &tracker);
 	} else if (!do_bond && mlx5_lag_is_bonded(ldev)) {
 		mlx5_remove_dev_by_protocol(dev0, MLX5_INTERFACE_PROTOCOL_IB);
