@@ -40,6 +40,7 @@
 enum {
 	MLX5_LAG_FLAG_BONDED = 1 << 0,
 	MLX5_LAG_FLAG_MULTIPATH = 1 << 1,
+	MLX5_LAG_FLAG_MULTIPATH_READY = 1 << 2,
 };
 
 struct lag_func {
@@ -797,6 +798,7 @@ void mlx5_lag_deactivate_multipath(struct mlx5_core_dev *dev)
 	mlx5_core_info(dev, "Deactivate multipath\n");
 
 	ldev->flags &= ~MLX5_LAG_FLAG_MULTIPATH;
+	ldev->flags &= ~MLX5_LAG_FLAG_MULTIPATH_READY;
 
 	err = mlx5_cmd_destroy_lag(dev);
 	if (err)
@@ -808,4 +810,25 @@ bool mlx5_lag_is_multipath(struct mlx5_core_dev *dev)
 	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
 
 	return ldev ? !!(ldev->flags & MLX5_LAG_FLAG_MULTIPATH) : false;
+}
+
+void mlx5_lag_set_multipath_ready(struct mlx5_core_dev *dev)
+{
+	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
+
+	ldev->flags |= MLX5_LAG_FLAG_MULTIPATH_READY;
+}
+
+void mlx5_lag_unset_multipath_ready(struct mlx5_core_dev *dev)
+{
+	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
+
+	ldev->flags &= ~MLX5_LAG_FLAG_MULTIPATH_READY;
+}
+
+bool mlx5_lag_is_multipath_ready(struct mlx5_core_dev *dev)
+{
+	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
+
+	return ldev ? !!(ldev->flags & MLX5_LAG_FLAG_MULTIPATH_READY) : false;
 }
