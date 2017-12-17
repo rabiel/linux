@@ -406,7 +406,7 @@ static int mlx5_handle_up_event(struct mlx5_lag *ldev,
 
 	tracker->netdev_state[port].link_up = 1;
 	tracker->netdev_state[port].tx_enabled = 1;
-	if (mlx5_lag_is_multipath(ldev->pf[0].dev))
+	if (mlx5_lag_is_multipath_ready(ldev->pf[0].dev))
 		mlx5e_restore_rules(ndev);
 	return 1;
 }
