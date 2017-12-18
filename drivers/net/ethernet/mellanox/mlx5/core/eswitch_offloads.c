@@ -92,8 +92,8 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_value, misc_parameters);
 	MLX5_SET(fte_match_set_misc, misc, source_port, attr->in_rep->vport);
 
-		if (flow_act.action & MLX5_FLOW_CONTEXT_ACTION_ENCAP)
-			priv = netdev_priv(attr->in_rep->netdev);
+	if (flow_act.action & MLX5_FLOW_CONTEXT_ACTION_ENCAP)
+		priv = netdev_priv(attr->in_rep->netdev);
 
 	MLX5_SET(fte_match_set_misc, misc,
 		 source_eswitch_owner_vhca_id,
