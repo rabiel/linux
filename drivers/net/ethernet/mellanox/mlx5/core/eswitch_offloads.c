@@ -660,12 +660,14 @@ out:
 	return flow_rule;
 }
 
-static void esw_del_peer_miss_rules(struct mlx5_eswitch *esw, int nvports)
+static void esw_del_peer_miss_rules(struct mlx5_eswitch *esw)
 {
 	struct mlx5_flow_handle **flows;
+	int nvports;
 	int i;
 
 	flows = esw->fdb_table.offloads.peer_miss_rules;
+	nvports = esw->fdb_table.offloads.peer_miss_rules_count;
 
 	for (i = 1; i < nvports; i++)
 		if (flows[i])
@@ -689,6 +691,7 @@ static void esw_add_peer_miss_rules(struct mlx5_eswitch *esw, int nvports)
 	}
 
 	esw->fdb_table.offloads.peer_miss_rules = flows;
+	esw->fdb_table.offloads.peer_miss_rules_count = nvports;
 
 	for (i = 1; i < nvports; i++) {
 		flow_rule = esw_add_fdb_peer_miss_rule(esw, peer_dev, i);
@@ -701,7 +704,7 @@ static void esw_add_peer_miss_rules(struct mlx5_eswitch *esw, int nvports)
 
 	return;
 out:
-	esw_del_peer_miss_rules(esw, nvports);
+	esw_del_peer_miss_rules(esw);
 	// TODO return error
 }
 
@@ -982,7 +985,7 @@ void esw_offloads_cleanup(struct mlx5_eswitch *esw, int nvports)
 	if (esw->fdb_table.offloads.peer_miss_rules) {
 		// TODO need to clean peer miss grp as well if peer is still
 		// switchdev
-		esw_del_peer_miss_rules(esw, nvports);
+		esw_del_peer_miss_rules(esw);
 	}
 	// TODO we always allocate peer_miss_grp so always need to release it
 	mlx5_destroy_flow_group(esw->fdb_table.offloads.peer_miss_grp);
