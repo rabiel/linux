@@ -816,12 +816,18 @@ void mlx5_lag_set_multipath_ready(struct mlx5_core_dev *dev)
 {
 	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
 
+	if (!ldev)
+		return;
+
 	ldev->flags |= MLX5_LAG_FLAG_MULTIPATH_READY;
 }
 
 void mlx5_lag_unset_multipath_ready(struct mlx5_core_dev *dev)
 {
 	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
+
+	if (!ldev)
+		return;
 
 	ldev->flags &= ~MLX5_LAG_FLAG_MULTIPATH_READY;
 }
