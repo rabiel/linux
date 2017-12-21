@@ -755,8 +755,10 @@ int mlx5_lag_activate_multipath(struct mlx5_core_dev *dev)
 		return -EOPNOTSUPP;
 	}
 
-	if (!dev2)
+	if (!dev2) {
+		mlx5_core_err(dev, "Cannot find lag device\n");
 		return -EOPNOTSUPP;
+	}
 
 	if (mlx5_lag_is_bonded(ldev)) {
 		mlx5_core_err(dev, "Bond already enabled\n");
