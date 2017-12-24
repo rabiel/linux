@@ -2336,7 +2336,7 @@ int mlx5e_configure_flower(struct mlx5e_priv *priv, __be16 protocol,
 			goto err_free2;
 
 		if ((MLX5_CAP_ESW(esw->dev, counter_eswitch_affinity) == MLX5_COUNTER_SOURCE_ESWITCH) &&
-		    (flow->esw_attr->in_rep->vport != UPLINK_REP_INDEX))
+		    (flow->esw_attr->in_rep->vport != FDB_UPLINK_VPORT))
 			peer_flow->esw_attr->counter_dev = priv->mdev;
 		else
 			peer_flow->esw_attr->counter_dev = peer_priv->mdev;
