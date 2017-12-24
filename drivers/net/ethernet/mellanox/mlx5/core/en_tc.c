@@ -2305,9 +2305,7 @@ int mlx5e_configure_flower(struct mlx5e_priv *priv, __be16 protocol,
 	}
 
 	if (mlx5_lag_is_multipath_ready(esw->dev) &&
-	    (flow->flags & MLX5E_TC_FLOW_ESWITCH) &&
-	    ((flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_DECAP) ||
-	     (flow->esw_attr->action & MLX5_FLOW_CONTEXT_ACTION_ENCAP)))
+	    (flow->flags & MLX5E_TC_FLOW_ESWITCH))
 	{
 		struct mlx5e_tc_flow_parse_attr *peer_parse_attr;
 		struct mlx5e_tc_flow *peer_flow;
