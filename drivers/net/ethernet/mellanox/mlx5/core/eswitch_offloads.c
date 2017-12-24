@@ -92,7 +92,7 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_value, misc_parameters);
 	MLX5_SET(fte_match_set_misc, misc, source_port, attr->in_rep->vport);
 
-	if (attr->in_rep->vport != UPLINK_REP_INDEX)
+	if (attr->in_rep->vport != FDB_UPLINK_VPORT)
 		priv = netdev_priv(attr->in_rep->netdev);
 
 	MLX5_SET(fte_match_set_misc, misc,
@@ -1362,6 +1362,7 @@ void mlx5_eswitch_unregister_vport_rep(struct mlx5_eswitch *esw,
 
 struct net_device *mlx5_eswitch_get_uplink_netdev(struct mlx5_eswitch *esw)
 {
+#define UPLINK_REP_INDEX 0
 	struct mlx5_esw_offload *offloads = &esw->offloads;
 	struct mlx5_eswitch_rep *rep;
 

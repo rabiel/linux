@@ -48,7 +48,6 @@
 #define MLX5_L2_ADDR_HASH(addr) (addr[5])
 
 #define FDB_UPLINK_VPORT 0xffff
-#define UPLINK_REP_INDEX 0
 
 #define MLX5_MIN_BW_SHARE 1
 
