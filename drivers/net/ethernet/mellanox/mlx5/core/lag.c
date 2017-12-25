@@ -394,54 +394,30 @@ static int mlx5_handle_changelowerstate_event(struct mlx5_lag *ldev,
 	return 1;
 }
 
-static int mlx5_handle_up_event(struct mlx5_lag *ldev,
-				struct lag_tracker *tracker,
-				struct net_device *ndev)
-{
-	int port;
-
-	port = mlx5_lag_dev_get_netdev_idx(ldev, ndev);
-	if (port < 0)
-		return 0;
-
-	tracker->netdev_state[port].link_up = 1;
-	tracker->netdev_state[port].tx_enabled = 1;
-	if (mlx5_lag_is_multipath_ready(ldev->pf[0].dev))
-		mlx5e_restore_rules(ndev);
-	return 1;
-}
-
-static int mlx5_handle_down_event(struct mlx5_lag *ldev,
-				  struct lag_tracker *tracker,
-				  struct net_device *ndev)
-{
-	int port;
-
-	port = mlx5_lag_dev_get_netdev_idx(ldev, ndev);
-	if (port < 0)
-		return 0;
-
-	tracker->netdev_state[port].link_up = 0;
-	tracker->netdev_state[port].tx_enabled = 0;
-	return 1;
-}
-
 static int mlx5_handle_change_event(struct mlx5_lag *ldev,
 				    struct lag_tracker *tracker,
 				    struct net_device *ndev)
 {
-	struct mlx5e_priv* priv = netdev_priv(ndev);
-	struct mlx5_core_dev *mdev = priv->mdev;
-	u8 port_state;
+	int link_up = netif_oper_up(ndev) && netif_running(ndev);
+	int old_state;
+	int port;
 
-	port_state = mlx5_query_vport_state(mdev,
-			MLX5_QUERY_VPORT_STATE_IN_OP_MOD_VNIC_VPORT,
-			0);
+	port = mlx5_lag_dev_get_netdev_idx(ldev, ndev);
+	if (port < 0)
+		return 0;
 
-	if (port_state == VPORT_STATE_UP)
-		return mlx5_handle_up_event(ldev, tracker, ndev);
-	else
-		return mlx5_handle_down_event(ldev, tracker, ndev);
+	old_state = tracker->netdev_state[port].link_up;
+
+	if (old_state == link_up)
+		return 0;
+
+	tracker->netdev_state[port].link_up = link_up;
+	tracker->netdev_state[port].tx_enabled = link_up;
+
+	if (link_up && mlx5_lag_is_multipath_ready(ldev->pf[0].dev))
+		mlx5e_restore_rules(ndev);
+
+	return 1;
 }
 
 static int mlx5_lag_netdev_event(struct notifier_block *this,
@@ -463,14 +439,10 @@ static int mlx5_lag_netdev_event(struct notifier_block *this,
 		return NOTIFY_DONE;
 
 	switch (event) {
+	case NETDEV_UP:
+	case NETDEV_DOWN:
 	case NETDEV_CHANGE:
 		changed = mlx5_handle_change_event(ldev, &tracker, ndev);
-		break;
-	case NETDEV_UP:
-		changed = mlx5_handle_up_event(ldev, &tracker, ndev);
-		break;
-	case NETDEV_DOWN:
-		changed = mlx5_handle_down_event(ldev, &tracker, ndev);
 		break;
 	case NETDEV_CHANGEUPPER:
 		changed = mlx5_handle_changeupper_event(ldev, &tracker, ndev,
