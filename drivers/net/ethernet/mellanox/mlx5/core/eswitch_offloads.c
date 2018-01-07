@@ -53,8 +53,6 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 	struct mlx5_flow_act flow_act = {0};
 	struct mlx5_fc *counter = NULL;
 	struct mlx5_flow_handle *rule;
-	struct net_device *up_dev = mlx5_eswitch_get_uplink_netdev(esw);
-	struct mlx5e_priv *priv = netdev_priv(up_dev);
 	void *misc;
 	int i = 0;
 
@@ -92,7 +90,10 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_value, misc_parameters);
 	MLX5_SET(fte_match_set_misc, misc, source_port, attr->in_rep->vport);
 
-	if (MLX5_CAP_ESW(dev, merged_eswitch)) {
+	if (MLX5_CAP_ESW(esw->dev, merged_eswitch)) {
+		struct net_device *up_dev = mlx5_eswitch_get_uplink_netdev(esw);
+		struct mlx5e_priv *priv = netdev_priv(up_dev);
+
 		if (attr->in_rep->vport != FDB_UPLINK_VPORT)
 			priv = netdev_priv(attr->in_rep->netdev);
 
