@@ -66,7 +66,7 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 		dest[i].type = MLX5_FLOW_DESTINATION_TYPE_VPORT;
 		dest[i].vport_num = attr->out_rep->vport;
 
-		if (MLX5_CAP_ESW(dev, merged_eswitch)) {
+		if (MLX5_CAP_ESW(esw->dev, merged_eswitch)) {
 			struct mlx5e_priv* priv = netdev_priv(attr->out_rep->netdev);
 
 			dest[i].destination_eswitch_owner_vhca_id = MLX5_CAP_GEN(priv->mdev, vhca_id);
