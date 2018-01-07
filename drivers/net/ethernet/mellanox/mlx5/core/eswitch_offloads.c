@@ -92,12 +92,14 @@ mlx5_eswitch_add_offloaded_rule(struct mlx5_eswitch *esw,
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_value, misc_parameters);
 	MLX5_SET(fte_match_set_misc, misc, source_port, attr->in_rep->vport);
 
-	if (attr->in_rep->vport != FDB_UPLINK_VPORT)
-		priv = netdev_priv(attr->in_rep->netdev);
+	if (MLX5_CAP_ESW(dev, merged_eswitch)) {
+		if (attr->in_rep->vport != FDB_UPLINK_VPORT)
+			priv = netdev_priv(attr->in_rep->netdev);
 
-	MLX5_SET(fte_match_set_misc, misc,
-		 source_eswitch_owner_vhca_id,
-		 MLX5_CAP_GEN(priv->mdev, vhca_id));
+		MLX5_SET(fte_match_set_misc, misc,
+			 source_eswitch_owner_vhca_id,
+			 MLX5_CAP_GEN(priv->mdev, vhca_id));
+	}
 
 	misc = MLX5_ADDR_OF(fte_match_param, spec->match_criteria, misc_parameters);
 	MLX5_SET_TO_ONES(fte_match_set_misc, misc, source_port);
