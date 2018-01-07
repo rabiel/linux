@@ -33,6 +33,7 @@
 #include <linux/netdevice.h>
 #include <linux/mlx5/driver.h>
 #include <linux/mlx5/vport.h>
+#include <linux/debugfs.h>
 #include "mlx5_core.h"
 #include "eswitch.h"
 #include "en_tc.h"
@@ -61,6 +62,7 @@ struct lag_tracker {
 struct mlx5_lag {
 	u8                        flags;
 	u8                        v2p_map[MLX5_MAX_PORTS];
+	u8                        lag_affinity;
 	struct lag_func           pf[MLX5_MAX_PORTS];
 	struct lag_tracker        tracker;
 	struct delayed_work       bond_work;
@@ -205,6 +207,60 @@ static void mlx5_modify_lag(struct mlx5_lag *ldev,
 	}
 }
 
+/**
+ * Set lag affinity
+ * @affinity:
+ *	0 - track netdev down/up events.
+ *	1 - set affinity to port 1.
+ *	2 - set affinity to port 2.
+ *	3 - set normal affinity.
+ *
+ * When affinity is not 0 then netdev down/up events do not
+ * change port affinity.
+ **/
+static int mlx5_lag_set_affinity(struct mlx5_lag *ldev, int affinity)
+{
+	struct lag_tracker tracker;
+
+	if (!ldev)
+		return -EOPNOTSUPP;
+
+	if (!mlx5_lag_is_multipath_ready(ldev->pf[0].dev))
+		return -EOPNOTSUPP;
+
+	if (ldev->lag_affinity == affinity)
+		return 0;
+
+	switch (affinity) {
+	case 0:
+		tracker.netdev_state[0].tx_enabled = true;
+		tracker.netdev_state[1].tx_enabled = true;
+		break;
+	case 1:
+		tracker.netdev_state[0].tx_enabled = true;
+		tracker.netdev_state[1].tx_enabled = false;
+		mlx5e_restore_rules(ldev->pf[0].netdev);
+		break;
+	case 2:
+		tracker.netdev_state[0].tx_enabled = false;
+		tracker.netdev_state[1].tx_enabled = true;
+		mlx5e_restore_rules(ldev->pf[1].netdev);
+		break;
+	case 3:
+		tracker.netdev_state[0].tx_enabled = true;
+		tracker.netdev_state[1].tx_enabled = true;
+		mlx5e_restore_rules(ldev->pf[0].netdev);
+		mlx5e_restore_rules(ldev->pf[1].netdev);
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	ldev->lag_affinity = affinity;
+	mlx5_modify_lag(ldev, &tracker);
+	return 0;
+}
+
 static void mlx5_create_lag(struct mlx5_lag *ldev,
 			    struct lag_tracker *tracker)
 {
@@ -271,7 +327,8 @@ static void mlx5_do_bond(struct mlx5_lag *ldev)
 
 		mlx5_add_dev_by_protocol(dev0, MLX5_INTERFACE_PROTOCOL_IB);
 		mlx5_nic_vport_enable_roce(dev1);
-	} else if ((do_bond && mlx5_lag_is_bonded(ldev)) || mlx5_lag_is_multipath(dev0)) {
+	} else if ((do_bond && mlx5_lag_is_bonded(ldev)) ||
+		   (mlx5_lag_is_multipath(dev0) && !ldev->lag_affinity)) {
 		mlx5_modify_lag(ldev, &tracker);
 	} else if (!do_bond && mlx5_lag_is_bonded(ldev)) {
 		mlx5_remove_dev_by_protocol(dev0, MLX5_INTERFACE_PROTOCOL_IB);
@@ -534,6 +591,80 @@ static void mlx5_lag_dev_remove_pf(struct mlx5_lag *ldev,
 	mutex_unlock(&lag_mutex);
 }
 
+static ssize_t data_write(struct file *filp, const char __user *buf,
+			  size_t count, loff_t *pos)
+{
+	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
+	char set_buf[5];
+	int size;
+	u8 val;
+	int ret;
+
+	if (*pos != 0)
+		return -EINVAL;
+
+	ret = -EFAULT;
+	size = min(sizeof(set_buf) - 1, count);
+	if (copy_from_user(set_buf, buf, size))
+		goto out;
+
+	set_buf[size] = '\0';
+	val = (u8) simple_strtoll(set_buf, NULL, 0);
+	ret = mlx5_lag_set_affinity(ldev, val);
+	if (ret == 0)
+		ret = count;
+out:
+	return ret;
+}
+
+static ssize_t data_read(struct file *filp, char __user *buf, size_t count,
+			 loff_t *pos)
+{
+	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_lag *ldev = mlx5_lag_dev_get(dev);
+	char get_buf[5];
+	int size;
+	int ret;
+
+	if (*pos)
+		return 0;
+
+	size = snprintf(get_buf, sizeof(get_buf), "%d\n", ldev->lag_affinity);
+
+	ret = simple_read_from_buffer(buf, count, pos, get_buf, size);
+
+	return ret;
+}
+
+static const struct file_operations dfops = {
+	.owner	= THIS_MODULE,
+	.open	= simple_open,
+	.write	= data_write,
+	.read	= data_read,
+};
+
+static void cleanup_lag_debugfs(struct mlx5_core_dev *dev)
+{
+	debugfs_remove_recursive(dev->priv.dbg_lag_affinity);
+}
+
+static int create_lag_debugfs_files(struct mlx5_core_dev *dev)
+{
+	struct dentry *dbg_root = dev->priv.dbg_root;
+
+	if (!mlx5_debugfs_root)
+		return 0;
+
+	dev->priv.dbg_lag_affinity = debugfs_create_file("lag_affinity",
+							 0600, dbg_root,
+							 dev, &dfops);
+	if (!dev->priv.dbg_lag_affinity)
+		return -ENOMEM;
+
+	return 0;
+}
+
 /* Must be called with intf_mutex held */
 void mlx5_lag_add(struct mlx5_core_dev *dev, struct net_device *netdev)
 {
@@ -566,6 +697,8 @@ void mlx5_lag_add(struct mlx5_core_dev *dev, struct net_device *netdev)
 			mlx5_core_err(dev, "Failed to register LAG netdev notifier\n");
 		}
 	}
+
+	create_lag_debugfs_files(dev);
 }
 
 /* Must be called with intf_mutex held */
@@ -577,6 +710,8 @@ void mlx5_lag_remove(struct mlx5_core_dev *dev)
 	ldev = mlx5_lag_dev_get(dev);
 	if (!ldev)
 		return;
+
+	cleanup_lag_debugfs(dev);
 
 	if (mlx5_lag_is_bonded(ldev))
 		mlx5_deactivate_lag(ldev);
