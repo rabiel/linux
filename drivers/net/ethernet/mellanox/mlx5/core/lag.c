@@ -232,29 +232,27 @@ static int mlx5_lag_set_affinity(struct mlx5_lag *ldev, int affinity)
 		return 0;
 
 	switch (affinity) {
-	case 0:
-		tracker.netdev_state[0].tx_enabled = true;
-		tracker.netdev_state[1].tx_enabled = true;
-		break;
 	case 1:
 		tracker.netdev_state[0].tx_enabled = true;
 		tracker.netdev_state[1].tx_enabled = false;
-		mlx5e_restore_rules(ldev->pf[0].netdev);
 		break;
 	case 2:
 		tracker.netdev_state[0].tx_enabled = false;
 		tracker.netdev_state[1].tx_enabled = true;
-		mlx5e_restore_rules(ldev->pf[1].netdev);
 		break;
+	case 0:
 	case 3:
 		tracker.netdev_state[0].tx_enabled = true;
 		tracker.netdev_state[1].tx_enabled = true;
-		mlx5e_restore_rules(ldev->pf[0].netdev);
-		mlx5e_restore_rules(ldev->pf[1].netdev);
 		break;
 	default:
 		return -EOPNOTSUPP;
 	}
+
+	if (tracker.netdev_state[0].tx_enabled)
+		mlx5e_restore_rules(ldev->pf[0].netdev);
+	if (tracker.netdev_state[1].tx_enabled)
+		mlx5e_restore_rules(ldev->pf[1].netdev);
 
 	ldev->lag_affinity = affinity;
 	mlx5_modify_lag(ldev, &tracker);
